@@ -312,6 +312,35 @@ class ControlPanel extends Panel {
         selectByPlane.append(selectByPlaneAxis);
         selectByPlane.append(selectByPlaneOffset);
 
+        // select by Box
+        const selectByBox = new Container({
+            class: 'control-parent'
+        });
+
+        const selectByBoxRadio = new RadioButton({
+            class: 'control-element'
+        });
+
+        const selectByBoxLabel = new Label({
+            class: 'control-label',
+            text: 'Box'
+        });
+
+
+        const selectByBoxCenter = new VectorInput({
+            class: 'control-element-expand',
+            precision: 4,
+            dimensions: 4,
+            value: [0, 0, 0, 1],
+            // @ts-ignore
+            placeholder: ['X', 'Y', 'Z', 'R'],
+            enabled: false
+        });
+
+        selectByBox.append(selectByBoxRadio);
+        selectByBox.append(selectByBoxLabel);
+        selectByBox.append(selectByBoxCenter);
+
         // set/add/remove
         const setAddRemove = new Container({
             class: 'control-parent'
@@ -373,6 +402,7 @@ class ControlPanel extends Panel {
         selectionPanel.append(selectByPlane);
         selectionPanel.append(setAddRemove);
         selectionPanel.append(selectTools);
+        selectionPanel.append(selectByBox);
 
         // show panel
         const showPanel = new Panel({
@@ -502,7 +532,7 @@ class ControlPanel extends Panel {
         });
 
         // radio logic
-        const radioGroup = [selectBySizeRadio, selectByOpacityRadio, selectBySphereRadio, selectByPlaneRadio];
+        const radioGroup = [selectBySizeRadio, selectByOpacityRadio, selectBySphereRadio, selectByPlaneRadio, selectByBoxRadio];
         radioGroup.forEach((radio, index) => {
             radio.on('change', () => {
                 if (radio.value) {
@@ -539,7 +569,8 @@ class ControlPanel extends Panel {
                 [selectBySizeSlider],
                 [selectByOpacitySlider],
                 [selectBySphereCenter],
-                [selectByPlaneAxis, selectByPlaneOffset]
+                [selectByPlaneAxis, selectByPlaneOffset],
+                [selectByBoxCenter],
             ];
 
             controlSet.forEach((controls, controlsIndex) => {
@@ -550,6 +581,7 @@ class ControlPanel extends Panel {
 
             events.fire('select.bySpherePlacement', index === 2 ? selectBySphereCenter.value : [0, 0, 0, 0]);
             events.fire('select.byPlanePlacement', index === 3 ? axes[selectByPlaneAxis.value] : [0, 0, 0], selectByPlaneOffset.value);
+            events.fire('select.byBoxPlacement', index === 4 ? selectByBoxCenter.value : [0, 0, 0, 1] );
         });
 
         const performSelect = (op: string) => {
@@ -558,6 +590,7 @@ class ControlPanel extends Panel {
                 case 1: events.fire('select.byOpacity', op, selectByOpacitySlider.value); break;
                 case 2: events.fire('select.bySphere', op, selectBySphereCenter.value); break;
                 case 3: events.fire('select.byPlane', op, axes[selectByPlaneAxis.value], selectByPlaneOffset.value); break;
+                case 4: events.fire('select.byBox', op, selectByBoxCenter.value); break;
             }
         };
 
@@ -620,6 +653,11 @@ class ControlPanel extends Panel {
         selectByPlaneAxis.on('change', () => {
             events.fire('select.byPlanePlacement', axes[selectByPlaneAxis.value], selectByPlaneOffset.value);
         });
+
+        selectByBoxCenter.on('change', () => {
+            events.fire('select.byBoxPlacement', selectByBoxCenter.value);
+        });
+
 
         selectByPlaneOffset.on('change', () => {
             events.fire('select.byPlanePlacement', axes[selectByPlaneAxis.value], selectByPlaneOffset.value);
