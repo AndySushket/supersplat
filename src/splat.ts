@@ -2,6 +2,7 @@ import {
     ADDRESS_CLAMP_TO_EDGE,
     FILTER_NEAREST,
     PIXELFORMAT_L8,
+    PIXELFORMAT_R32F,
     Asset,
     BoundingBox,
     Entity,
@@ -21,7 +22,8 @@ const vertexShader = /*glsl*/`
 uniform sampler2D splatState;
 
 flat varying highp uint vertexState;
-
+flat varying highp uint splatIndex;
+varying vec3 splatCenter;
 #ifdef PICK_PASS
 flat varying highp uint vertexId;
 #endif
@@ -35,25 +37,36 @@ void main(void)
     vec4 centerWorld = matrix_model * vec4(centerLocal, 1.0);
 
     gl_Position = evalSplat(centerWorld);
-
     vertexState = uint(texelFetch(splatState, splatUV, 0).r * 255.0);
-
+    
+    splatIndex = splatId;
+    splatCenter = centerLocal;
     #ifdef PICK_PASS
         vertexId = splatId;
     #endif
 }
 `;
 
-const fragmentShader = /*glsl*/`
-
+const getFragmentShader = (numSplats: number) =>  /*glsl*/`
 #ifdef PICK_PASS
 flat varying highp uint vertexId;
 #endif
 
 flat varying highp uint vertexState;
-
+flat varying highp uint splatIndex;
+varying vec3 splatCenter;
 uniform float pickerAlpha;
 uniform float ringSize;
+uniform vec3 view_position;
+uniform sampler2D fRest0texture;
+uniform sampler2D fRest1texture;
+uniform sampler2D fRest2texture;
+uniform sampler2D fRest3texture;
+uniform sampler2D fRest4texture;
+uniform sampler2D fRest5texture;
+uniform sampler2D fRest6texture;
+uniform sampler2D fRest7texture;
+uniform sampler2D fRest8texture;
 float PI = 3.14159;
 
 void main(void)
@@ -107,8 +120,25 @@ void main(void)
                 }
             }
         } 
-
+       float SH_C1 = 0.94886025119029199;
+        // Spherical Harmonics Coefficients
+        float sh_r_y_coeff = texture2D(fRest0texture, vec2(float(splatIndex) / float(${numSplats}), 0.0)).r;
+        float sh_g_y_coeff = texture2D(fRest1texture, vec2(float(splatIndex) / float(${numSplats}), 0.0)).r;
+        float sh_b_y_coeff = texture2D(fRest2texture, vec2(float(splatIndex) / float(${numSplats}), 0.0)).r;
+        float sh_r_z_coeff = texture2D(fRest3texture, vec2(float(splatIndex) / float(${numSplats}), 0.0)).r;
+        float sh_g_z_coeff = texture2D(fRest4texture, vec2(float(splatIndex) / float(${numSplats}), 0.0)).r;
+        float sh_b_z_coeff = texture2D(fRest5texture, vec2(float(splatIndex) / float(${numSplats}), 0.0)).r;
         gl_FragColor = vec4(c, alpha);
+        float sh_r_x_coeff = texture2D(fRest6texture, vec2(float(splatIndex) / float(${numSplats}), 0.0)).r;
+        float sh_g_x_coeff = texture2D(fRest7texture, vec2(float(splatIndex) / float(${numSplats}), 0.0)).r;
+        float sh_b_x_coeff = texture2D(fRest8texture, vec2(float(splatIndex) / float(${numSplats}), 0.0)).r;
+        
+        vec3 normalized_direction = normalize(splatCenter - view_position);
+        vec3 shFirstOrderCorrection = 
+        - SH_C1 * normalized_direction.y * vec3(sh_r_y_coeff, sh_g_y_coeff, sh_b_y_coeff)
+        + SH_C1 * normalized_direction.z * vec3(sh_r_z_coeff, sh_g_z_coeff, sh_b_z_coeff)
+        - SH_C1 * normalized_direction.x * vec3(sh_r_x_coeff, sh_g_x_coeff, sh_b_x_coeff);
+        gl_FragColor = vec4(c + shFirstOrderCorrection, alpha);
     #endif
 }
 `;
@@ -132,13 +162,14 @@ class Splat extends Element {
         super(ElementType.splat);
 
         const splatResource = asset.resource as GSplatResource;
+        const numSplats = splatResource.splatData.numSplats;
 
         this.asset = asset;
         this.splatData = splatResource.splatData;
         this.entity = new Entity('splatParent');
         this.root = splatResource.instantiate({
             vertex: vertexShader,
-            fragment: fragmentShader
+            fragment: getFragmentShader(numSplats)
         });
 
         const instance = this.root.gsplat.instance;
@@ -164,6 +195,27 @@ class Splat extends Element {
 
         this.localBoundStorage = instance.splat.aabb;
         this.worldBoundStorage = instance.meshInstance._aabb;
+
+        let i = -1;
+        const n = 9;
+        while (++i < n) {
+            const f_rest = splatResource.splatData.getProp(`f_rest_${i}`);
+            const texture = new Texture(splatResource.device, {
+                width: numSplats,
+                height: numSplats,
+                format: PIXELFORMAT_R32F,
+                mipmaps: false,
+                minFilter: FILTER_NEAREST,
+                magFilter: FILTER_NEAREST,
+                addressU: ADDRESS_CLAMP_TO_EDGE,
+                addressV: ADDRESS_CLAMP_TO_EDGE
+            });
+
+            const textureData = new Float32Array(f_rest);
+            texture.lock().set(textureData);
+            texture.unlock();
+            splatResource.device.scope.resolve(`fRest${i}texture`).setValue(texture);
+        }
 
         instance.meshInstance._updateAabb = false;
 
