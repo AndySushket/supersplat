@@ -33,6 +33,9 @@ const registerEditorEvents = (events: Events, editHistory: EditHistory, scene: S
     const debugSphereCenter = new Vec3();
     let debugSphereRadius = 0;
 
+    const debugBoxCenter = new Vec3();
+    let debugBoxRadius = 0;
+
     const debugPlane = new Vec3();
     let debugPlaneDistance = 0;
 
@@ -42,6 +45,12 @@ const registerEditorEvents = (events: Events, editHistory: EditHistory, scene: S
 
         if (debugSphereRadius > 0) {
             app.drawWireSphere(debugSphereCenter, debugSphereRadius, Color.RED, 40);
+        }
+
+        if (debugBoxRadius > 0) {
+            const minPoint = debugBoxCenter.clone().subScalar(debugBoxRadius);
+            const maxPoint = debugBoxCenter.clone().addScalar(debugBoxRadius);
+            app.drawWireAlignedBox(minPoint, maxPoint, Color.RED);
         }
 
         if (debugPlane.length() > 0) {
@@ -241,6 +250,13 @@ const registerEditorEvents = (events: Events, editHistory: EditHistory, scene: S
         scene.forceRender = true;
     });
 
+    events.on('select.byBoxPlacement', (box: number[]) => {
+        debugBoxCenter.set(box[0], box[1], box[2]);
+        debugBoxRadius = box[3]
+
+        scene.forceRender = true;
+    });
+
     events.on('select.byPlanePlacement', (axis: number[], distance: number) => {
         debugPlane.set(axis[0], axis[1], axis[2]);
         debugPlaneDistance = distance;
@@ -292,6 +308,33 @@ const registerEditorEvents = (events: Events, editHistory: EditHistory, scene: S
             processSelection(state, op, (i) => {
                 vec2.set(x[i], y[i], z[i]);
                 return vec.dot(vec2) - localDistance > 0;
+            });
+
+            splat.updateState();
+        });
+    });
+
+    events.on('select.byBox', (op: string, box: number[]) => {
+        selectedSplats().forEach((splat) => {
+            console.log('select.byBox', box)
+            const splatData = splat.splatData;
+            const state = splatData.getProp('state') as Uint8Array;
+            const x = splatData.getProp('x');
+            const y = splatData.getProp('y');
+            const z = splatData.getProp('z');
+
+            vec.set(box[0], box[1], box[2]);
+
+
+            mat.invert(splat.worldTransform);
+            mat.transformPoint(vec, vec);
+
+            const minPoint = vec.clone().subScalar(debugBoxRadius);
+            const maxPoint = vec.clone().addScalar(debugBoxRadius);
+
+            processSelection(state, op, (i) => {
+                vec2.set(x[i], y[i], z[i]);
+                return vec2.x > minPoint.x && vec2.x < maxPoint.x && vec2.y > minPoint.y && vec2.y < maxPoint.y && vec2.z > minPoint.z && vec2.z < maxPoint.z;
             });
 
             splat.updateState();
